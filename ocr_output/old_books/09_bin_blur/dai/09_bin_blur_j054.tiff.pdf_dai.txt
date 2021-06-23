@@ -1,0 +1,9 @@
+1
+_at.
+Irreguiar Seals
+1
+;
+t 1
+f
+.
+

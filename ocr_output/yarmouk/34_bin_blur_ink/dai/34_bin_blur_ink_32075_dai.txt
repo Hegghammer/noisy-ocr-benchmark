@@ -1,0 +1,31 @@
+.vu - ويكيبيديا، الموسوعة الحرة
+vu. هو امتداد خاص بالعناوين الإلكترونية (نطاق) domain للمواقع التي تنتمي إلى فانواتو
+(
+A .ac .ad .ae .af .ag .am .ao .aq .ar .as .at .au .aw .ax .az B .ba .bb .bd .be
+.bf .bg .bh .bi .bj .bp.bo .br .bs .bt .bw .by .bz C.ca .cc .cd .cf .cg .ch .ci
+.ck .cl .cm .cn .co .cr v .cw .cx .cz D .de .dj .dk .dm .do .dz E .ec .ee
+.eg .er .es .et .eu F k.fm G .ga .gd .ge .gf .gg .gh .gi .gl .gm .gn
+.gp .gq .gr .gs .gt .gu
+hr .ht .hu I .id .ie .il .im .in .io .iq
+.ir .is .it J .je .jm .jo
+.kn .kp .kr .kw .ky .kz L .la .lb
+.lc .li .lk .lr .ls .lt .lu
+mg .mh .mk .ml .mm .mn .mo
+.mp .mq .mr .ms .mt
+na .nc .ne .nf .ng .ni .nl .no
+.np .nr .nu .nz 0.01
+n.pn .pr .ps .pt .pw .py
+Q .qa R .re .ro .rs .ru .
+A.si .sk .sl .sm .sn .so .sr .ss
+.st .su .sv .sx .sy .sz T .tc
+m .tn .to .tr .tt .tv .tw .tz U .ua
+.ug .uk .us .uy .uz V .va.
+W .wf .ws Y .ye .yt Z .za
+.zm .zw
+.?? (bg, بلغاريا) .?? (kg قبرص) .?? (el, اليونان 27. (Yisrael, إسرائيل) .22 (Nippon
+اليابان) .??? (Lao, لاوس)
+bl.bq.eh.mf.
+bv.gb.sj.
+an .su .tp.
+bu .cs .dd.um.yu .zr.
+

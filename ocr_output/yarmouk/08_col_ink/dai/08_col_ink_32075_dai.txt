@@ -1,0 +1,38 @@
+.vu - ويكيبيديا الموسوعة الحرة
+ة (نطاق) domain للمواقع التي تنتمي إلى فانواتو
+vu. هو امتداد خاص بالعناوين
+.ac .ad .ae .af .ag .ai .al .am .ao .aq .ar .
+.bf .bg .bh .bi .bj .bm .bn .bo .br .bs .by
+.ck .cl .cm .cn .co .cr .cu .cv .cw .cx
+.eg .er .es .et .eu F .fi .fj .fk .fm
+.gp .gq .gr .gs .gt .gu .gw .gy H
+.ir .is .it J .je .jm .jo .jp K .ke .kg
+.lc .li .lk .lr .ls .lt .lu .lv .ly M .ma .m
+.mp .mq .mr .ms .mt .mu .mv .mw .mx .my
+.np .nr .nu .nz O .om P .pa .pe .pf .pg .pl
+Q.qa R .re .ro .rs .ru .rw S .sa .sb .sc .sd .se
+.st .su .sv .sx .sy .sz T .tc .td .tf .tg .th .tj .tk .tl .tif
+.tml
+.ug .uk .us .uy .uz V .va .vc .ve .vg .vi .vn .vu V
+x .az B .ba .bb .bd .be
+.ca .cc .cd .cf .cg .ch .ci
+k .dm .do .dz E .ec .ee
+f.gg .gh .gi .gl .gm .gn
+.id .ie .il .im .in .io .iq
+\kw .ky .kz L .la .lb
+mk .ml .mm .mn .mo
+.ne .nf .ng .ni .nl .no
+n.pr .ps .pt .pw .py
+sk .sl .sm .sn .so .sr .ss
+.tr .tt .tv .tw .tz U .ua
+f.ws Y .ye .yt Z .za
+.zm .zw
+.?? (bg, بلغاريا) .?? (kp, قبرص) .?? (el, اليونان) ?????. (Yisrael, إسرائيل) .?? (Nippon
+اليابان) .??? (Lao, لاوس)
+bl.bq .eh .mf.
+bv.gb.sj.
+an .su .tp.
+bu .csdd .um .yu .zr.
+*
+1
+

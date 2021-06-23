@@ -1,0 +1,647 @@
+---
+title: 'OCR with Tesseract, Amazon Textract, and Google Document AI: A Benchmarking
+  Experiment'
+author:
+  - Thomas Hegghammer^[Norwegian Defence Research Establishment (FFI) - thomas.hegghammer@ffi.no]
+date: "24/06/2021"
+output: 
+  pdf_document:
+    extra_dependencies: "subfig"
+    fig_caption: yes
+    keep_tex: yes
+    number_sections: yes
+header-includes:
+  - \usepackage{amsmath}
+  - \usepackage{amssymb}
+  - \usepackage{booktabs}
+  - \usepackage{inputenc}
+  - \usepackage{hyperref}
+  - \usepackage{floatrow}
+  - \floatsetup[figure]{capposition=top}
+  - \floatsetup[table]{capposition=top}
+documentclass: article
+biblio-style: apsr
+linestretch: 2
+fontsize: 12pt
+indent: yes
+geometry: margin=1.25in
+bibliography: /home/thomas/Vault/Nextcloud/Documents/Jobb/master.bib
+#bibliography: D:/Nextcloud/Documents/Jobb/master.bib
+thanks: I thank Neil Ketchley and the participants in the University of Oslo Political Data Science seminar on 17 June 2021 for inputs and suggestions. Supplementary information and replication materials are available at https://github.com/Hegghammer/noisy-ocr-benchmark.
+abstract: \noindent 
+  Optical Character Recognition (OCR) can open up understudied historical documents to computational analysis, but the accuracy of OCR software varies. This article reports a benchmarking experiment comparing the performance of Tesseract, Amazon Textract, and Google Document AI on images of English and Arabic text. English-language book scans (n=322) and Arabic-language article scans (n=100) were replicated 43 times with different types of artificial noise for a corpus of 18,568 documents, generating 51,304 process requests. Document AI delivered the best results, and the server-based processors (Textract and Document AI) were substantially more accurate than Tesseract, especially on noisy documents. Accuracy for English was considerably better than for Arabic. Specifying the relative performance of three leading OCR products and the differential effects of commonly found noise types can help scholars identify better OCR solutions for their research needs. The test materials have been preserved in the openly available "Noisy OCR Dataset" (NOD).\newline \newline \textbf{Keywords:} OCR, cloud computing, benchmarking \newline \newline \textbf{Word count:} 4,042 \newline \newline \newline \newline \newline \newline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(kableExtra)
+library(here)
+library(stringr)
+library(dplyr)
+library(cowplot)
+library(patchwork)
+library(ggridges)
+library(viridis)
+library(extrafont)
+library(ggplot2)
+library(magrittr)
+
+
+df <- read.csv(here("data", "ocr_benchmark_master.csv"))
+df$word_acc_na_as_zero <- df$word_acc
+df$word_acc_na_as_zero[is.na(df$word_acc_na_as_zero)] <- 0
+df$engine <- factor(df$engine, levels = c("dai", "textract", "tesseract"))
+df$char_error <- 100-df$char_acc
+df$word_error <- 100-df$word_acc_na_as_zero
+df$noise <- str_replace_all(df$noise, "_", " + ")
+noise_types <- unique(df$noise)
+df$noise <- factor(df$noise, levels = noise_types)
+```
+
+# Introduction
+
+Few technologies hold as much promise for the social sciences and humanities as optical character recognition (OCR). Automated text extraction from digital images can open up large quantities of understudied historical documents to computational analysis, potentially generating deep new insights on the human past.
+
+But OCR is a technology still in the making, and available software provides varying levels of accuracy. The best results are usually obtained with a tailored solution involving corpus-specific pre-processing [@bieniecki2007image; @dengel1997techniques; @holley2009good; @lat2018enhancing; @volk2011strategies; @wemhoener2013creating], model training [@boiangiu2016voting; @reul2018improving; @springmann2014ocr; @wick2018comparison], or postprocessing [@kissos2016ocr; @strohmaier2003lexical; @thompson2015customised], but such procedures can be labour-intensive. Pre-trained, general OCR processors have a much higher potential for wide adoption in the scholarly community, and hence their out-of-the box performance is of scientific interest.
+
+For long, general OCR processors such as *Tesseract* [@tesseract2019; @patel2012optical] only delivered perfect results under what we may call laboratory conditions, i.e., on noise-free, single-column text in a clear printed font. This limited their utility for real-life historical documents, which often contain shading, blur, shine-through, stains, skewness, complex layouts, and other things that produce OCR error. Historically, general OCR processors have also struggled with non-Western languages [@kanungo1999performance], rendering them less useful for the many scholars working on documents in such languages. 
+
+In the past decade, advances in machine learning have led to substantial improvements in standalone OCR processor performance. Moreover, the past two years have seen the arrival of server-based processors such as Amazon Textract and Google Document AI, which offer document processing via an application processing interface (API) [@walker2018web]. Media and blog coverage indicate that these processors deliver strong out-of-the-box performance[^reviews], but those tests usually involve a small number of documents. Meanwhile, most rigorous benchmarking studies [@tafti2016ocr; @vijayarani2015performance] predate the server-based processors, so we do not know how well they perform. 
+
+[^reviews]: See, for example, Ted Han and Amanda Hickman, "Our Search for the Best OCR Tool, and What We Found", *OpenNews*, February 19, 2019 (https://source.opennews.org/articles/so-many-ocr-options/); Fabian Gringel, "Comparison of OCR tools: how to choose the best tool for your project", *Medium.com*,  January 20, 2020 (https://medium.com/dida-machine-learning/comparison-of-ocr-tools-how-to-choose-the-best-tool-for-your-project-bd21fb9dce6b);  Manoj Kukreja, "Compare Amazon Textract with Tesseract OCR — OCR & NLP Use Case", *TowardDataScience.com*, September 17, 2020 (https://towardsdatascience.com/compare-amazon-textract-with-tesseract-ocr-ocr-nlp-use-case-43ad7cd48748); Cem Dilmegani, "Best OCR by Text Extraction Accuracy in 2021", *AIMultiple.com*, June 6, 2021 (https://research.aimultiple.com/ocr-accuracy/). 
+
+To find out, I conducted a benchmarking experiment comparing the performance of *Tesseract*, *Textract*, and *Document AI* on English and Arabic page scans. The objective was to generate statistically meaningful measurements of the accuracy of a selection of general OCR processors on document types commonly encountered in social scientific and humanities research. 
+
+The exercise yielded specifications for the relative performance of three leading OCR products as well as the differential effects of commonly found noise types. The findings can help scholars identify better OCR solutions for their research needs. The test materials, which have been preserved in the openly available "Noisy OCR Dataset" (NOD), can be used in future research.
+
+# Design
+
+The experiment involved taking two document collections of 322 (English) and 100 (Arabic) page scans, replicating each over 40 times with different types of artificially generated noise, processing the full corpus of ~18,500 documents in each engine, and measuring the accuracy against ground truth using the Information Science Research Institute (ISRI) tool.
+
+## Processors
+
+*Tesseract*, *Textract*, and *Document AI* were selected on the basis of their wide use, reputation for accuracy, and availability for programmatic use. Budget constraints prevented the inclusion of additional reputable processors such as *Adobe PDF Tools*, *ABBYY FineReader*, and *Microsoft Azure Computer Vision*, but these can be tested in the future using the same procedure and test materials.
+
+A full description of these processors is beyond the scope of this article, but Table 1 summarizes their main user-related features.[^links] All processors are accessible programmatically from the main three operating systems and in multiple programming languages, including R and Python. The main difference is that *Tesseract* is open source and installed locally, whereas *Textract* and *Document* are paid services accessed remotely via a REST API.
+
+[^links]: For documentation, see the product websites: https://github.com/tesseract-ocr/tesseract, https://aws.amazon.com/textract/, and https://cloud.google.com/document-ai. 
+
+```{r echo=FALSE}
+Name <- c("Tesseract", "Textract", "Document AI")
+Maintainer <- c("Tesseract OCR Project", "Amazon Web Services", "Google Cloud Services")
+Installation <- c("Local", "Server-based", "Server-based")
+Architecture <- c("LSTM", "Undisclosed", "Undisclosed")
+Languages <- c(116, 6, "60+")
+Cost <- c("Free", "$1.50 per\n1000 pages", "$1.50 per\n1000 pages")
+
+tab <- data.frame(Name, Maintainer, Installation, Architecture, Languages, Cost)
+
+kbl(tab, caption = "Features of Tesseract, Textract, and Document AI", booktabs = T) %>%
+kable_styling(latex_options = c("scale_down"))
+```
+
+## Data
+
+Test data were chosen for their similarity with archival materials commonly studied in the social sciences and humanities. This is in contrast to forms, receipts, and other business documents, which commercial OCR engines are primarily designed for, and which tend to get the most attention in media and blog reviews. Since many scholars work on materials in languages other than English, I also sought to include test materials in a non-Western language. Arabic was selected for its size as a world language and for its alphabetic structure, which lends itself to accuracy measurement with the ISRI tool. 
+
+The English test corpus consisted of the "Old Books Dataset" [@barcha2017oldbooks], a collection of 322 colour page scans from ten books printed between 1853 and 1920 (see figures 1a and 1b) and subsequently extracted from the *Project Gutenberg* website. The dataset comes as 300 DPI and 500 DPI TIFF image files accompanied by ground truth in TXT files. I used the 300 DPI files in the experiment.
+
+The Arabic test materials were drawn from the "Yarmouk Arabic OCR Dataset" [@doush2018yarmouk], a collection of 4,587 *Wikipedia* articles printed out to paper and colour scanned to PDF (see figures 1c and 1d). The dataset contains ground truth in HTML and TXT files. Due to the homogeneity of the collection, a randomly selected subset of 100 pages was deemed sufficient for the experiment. 
+
+The Yarmouk dataset is suboptimal because it does not come from historical printed documents, but it is one of very few Arabic language datasets of some size with accompanying ground truth data. The Arabic and English test materials are thus not directly analogous, and in principle the former poses a lighter OCR challenge than the latter. Another limitation of the experiment is that the test materials only includes single-column text due to the complexities involved in measuring layout parsing accuracy.  
+
+```{r fig.cap='Sample test documents in their original state', fig.subcap=c('Old Books j020', 'Old Books g023', 'Yarmouk 25223-1', 'Yarmouk 4155-1'), fig.ncol = 2, out.width = "42%", fig.align = "center", echo=FALSE}
+include_graphics(here("images", "j020.png"))
+include_graphics(here("images", "g023.png"))
+include_graphics(here("images", "25223_1.png"))
+include_graphics(here("images", "4155_1.png"))
+```
+
+## Noise application
+
+Real-life historical document scans rarely come in a form optimized for OCR processing. A key objective of the experiment was therefore to gauge the effect of different types of visual noise on performance. To achieve this, I programmatically applied different types of artifical noise to the test materials, so as to allow isolation of noise effects at the measurement stage. Specifically, the two dataset were duplicated 43 times, each with a different type of modification. The R code used for noise generation is included in the supplementary information.
+
+I began by creating a binary version of each image, so that there were two versions --- colour and greyscale --- with no added noise (see figure 2a and 2b). I then wrote functions to generate six ideal types of image noise: "blur", "weak ink", "salt and pepper", "watermark", "scribbles", and "ink stains" (see figures 2c-d and 3a-d). While not an exhaustive list of possible noise types, they represent several of the most common ones found in historical document scans. I applied each of the six filters to both the colour version and the binary version of the images, thus creating 12 additional versions of each image. Lastly I applied all available combinations of two noise filters to the colour and binary images, for an additional 30 versions. 
+
+This generated a total of 44 image versions divided into three categories of noise intensity: 2 versions with no added noise, 12 versions with one layer of noise, and 30 versions with two layers of noise. This amounted to an English test corpus of 14,168 documents and an Arabic test corpus of 4,400 documents. The dataset is preserved on Zenodo as the "Noisy OCR Dataset" [@hegghammer2021noisy].
+
+```{r fig.cap='Sample test document ("Old Books j020") with noise applied', fig.subcap=c('Original', 'Binary', 'Blur', 'Weak ink'), fig.ncol = 2, out.width = "40%", fig.align = "center", echo=FALSE}
+include_graphics(here("images", "j020_orig.png"))
+include_graphics(here("images", "j020_bin.png"))
+include_graphics(here("images", "j020_blur.png"))
+include_graphics(here("images", "j020_weak.png"))
+```
+
+```{r fig.cap='Sample test document ("Old Books j020") with noise applied (cont.)"', fig.subcap=c('Salt and pepper', 'Watermark', 'Scribbles', 'Ink stains'), fig.ncol = 2, out.width = "40%", fig.align = "center", echo=FALSE}
+include_graphics(here("images", "j020_snp.png"))
+include_graphics(here("images", "j020_wm.png"))
+include_graphics(here("images", "j020_scrib.png"))
+include_graphics(here("images", "j020_ink.png"))
+```
+
+## Processing
+
+The experiment sought to measure out-of-the-box performance, so documents were submitted without further preprocessing using the OCR engines' default settings.[^Arabic] While this is admittedly an uncommon use of *Tesseract*, it treats the engines equally and helps highlight the degree to which Tesseract is dependent on image preprocessing.
+
+[^Arabic]: The only exception was the setting of the relevant language libraries in *Tesseract*.    
+
+The English corpus was submitted to all three OCR engines in a total of 42,504 document processing requests. The Arabic corpus was only submitted to *Tesseract* and *Document AI* --- since *Textract* does not support Arabic --- for a total of 8,800 processing requests.
+
+The *Tesseract* processing was done in R with the package `tesseract` (v4.1.1) on a desktop computer. For *Textract*, the processing was carried out via the R package `paws` (v0.1.11), which provides a wrapper for the Amazon Web Services API. For *Document AI*, I used the R package `daiR` (v0.8.0) to access the *Document AI* API v1 endpoint. The processing was carried out in April and May of 2021. 
+
+## Measurement
+
+Accuracy was measured using the ISRI tool [@rice1996isri] in Eddie Santos [-@santos-2019-ocr] updated version with UTF-8 support.[^alternatives] ISRI compares two texts --- in this case OCR output to ground truth --- and returns a range of measures for divergence, notably a document's overall character accuracy and word accuracy expressed in percent. Character accuracy was not used, because the character accuracy rates returned by the ISRI tool contained a substantial proportion (~20%) of irregular values, notably percentages below zero and over 100. In the reporting below I therefore use word accuracy rates, transformed to word error rates by subtracting them from 100.[^NAs]
+
+[^NAs]: The word accuracy measurements contained a certain proportion (REF) of null values, especially in the output produced by *Tesseract*. Visual inspection of a sample of the concerned documents suggests they contained largely garbled text, so they were treated as zeroes. 
+
+[^alternatives]: Alternatives exist [@carrasco2014open; @alghamdi2016arabic], but ISRI was deemed sufficient, notably because the Yarmouk texts do not contain diacritics.
+
+# Results
+
+The main results are shown in Figure 4 and reveal clear patterns. *Document AI* had consistently lower error rates, with *Textract* coming in a close second, and *Tesseract* last. More noise yielded higher error rates in all engines, but *Tesseract* was significantly more sensitive to noise than the two others. Overall, there was a significant performance gap between the server-based processors (*Document AI* and *Textract*) on one side and the local installation (*Tesseract*) on the other. Only on noise-free documents in English could *Tesseract* compete with the two other processors. 
+
+We also see a significant performance difference across languages. Both *Document AI* and *Tesseract* delivered markedly lower accuracy for Arabic than they did for English. This was despite the Arabic corpus consisting of Internet articles in a single, very common font, while the English corpus contained old book scans in several different fonts. An analogous Arabic corpus would likely have produced an even larger performance gap. This said, *Document AI* represents a significant improvement on *Tesseract* as far as out-of-the-box Arabic OCR is concerned.
+
+Disaggregating the results by noise type shows a more detailed picture (see Figures 5 and 6). Beyond the patterns already described, we see, for example, that both *Textract* and *Tesseract* performed somewhat better on greyscale versions of the test images than on the colour version. We also note that all engines struggled with blur, while *Tesseract* was much more sensitive to salt & pepper noise than the two other engines. Incidentally, it is not surprising that the ink stain filter yielded lower accuracy throughout since it completely concealed part of the text.
+
+```{r fig.cap='Word error rates by engine and noise level for English and Arabic documents', fig.width=10,fig.height=13, echo=FALSE, message=FALSE, warning=FALSE}
+ob <- df %>% filter(dataset == "old_books")
+
+ob_summary <- ob %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(word_error), 1),
+            peaks = max((density(word_error))$y[])) %>%
+  mutate(yPos = max(peaks)*.8, xPos = c(means[1]-0.5, means[2]+0.5, means[3]))
+
+## All engines, all noise levels
+p1 <- ggplot(ob, aes(word_error, fill = engine)) +
+  geom_density(alpha = 0.6, lwd = 0.1) +
+  geom_label(data = ob_summary, 
+             aes(x = xPos, y = yPos, label = means, colour=engine),
+             colour="black", 
+             alpha = 0.6,
+             show.legend = FALSE) +
+  geom_segment(data = ob_summary, 
+               aes(x = means, y = 0, xend = means, yend = max(peaks)*.7, colour=engine),
+               linetype = "dashed", 
+               size=1, 
+               alpha = 0.6, 
+               show.legend = FALSE) +
+  scale_color_manual(values = c("turquoise3", "yellow3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Amazon Textract", "Tesseract")) +
+  scale_fill_manual(values = c("turquoise3", "yellow3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Amazon Textract", "Tesseract")) +
+  theme_minimal() +
+  labs(title = "ENGLISH\n\nAll documents combined (n=42,504)", x = "", y = "") +
+  coord_cartesian(xlim=c(0, 50)) +
+  theme(plot.title=element_text(hjust=0.5))
+
+## All engines, no noise
+ob_no_noise <- ob %>%
+  filter(noise %in% noise_types[1:2])
+
+ob_no_noise_summary <- ob_no_noise %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(word_error), 1),
+            peaks = max((density(word_error))$y[])) %>%
+  mutate(yPos = max(peaks)*.8, xPos = c(0, 4, 8))
+
+p2 <- ggplot(ob_no_noise, aes(word_error, fill = engine)) +
+  geom_density(alpha = 0.6, lwd = 0.1) +
+  geom_label(data = ob_no_noise_summary, 
+             aes(x = xPos, y = yPos, label = means, colour=engine),
+             colour="black", 
+             alpha = 0.6,
+             show.legend = FALSE) +
+  geom_segment(data = ob_no_noise_summary, 
+               aes(x = means, y = 0, xend = means, yend = max(peaks)*.7, colour=engine),
+               linetype = "dashed", 
+               size=1, 
+               alpha = 0.6, 
+               show.legend = FALSE) +
+  scale_color_manual(values = c("turquoise3", "yellow3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Amazon Textract", "Tesseract")) +
+  scale_fill_manual(values = c("turquoise3", "yellow3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Amazon Textract", "Tesseract")) +
+  theme_minimal() +
+  labs(title = "No added noise (n=1,932)", x = "", y = "Density") +
+  coord_cartesian(xlim=c(0, 50)) +
+  theme(plot.title=element_text(hjust=0.5))
+
+## All engines, one noise level
+
+ob_one_layer <- ob %>%
+  filter(noise %in% noise_types[3:14])
+
+ob_one_layer_summary <- ob_one_layer %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(word_error), 1),
+            peaks = max((density(word_error))$y[])) %>%
+  mutate(yPos = max(peaks)*.8, xPos = means)
+
+
+p3 <- ggplot(ob_one_layer, aes(word_error, fill = engine)) +
+  geom_density(alpha = 0.6, lwd = 0.1) +
+  geom_label(data = ob_one_layer_summary, 
+             aes(x = xPos, y = yPos, label = xPos, colour=engine),
+             colour="black", 
+             alpha = 0.6,
+             show.legend = FALSE) +
+  geom_segment(data = ob_one_layer_summary, 
+               aes(x = means, y = 0, xend = means, yend = max(peaks)*.7, colour=engine),
+               linetype = "dashed", 
+               size=1, 
+               alpha = 0.6, 
+               show.legend = FALSE) +
+  scale_color_manual(values = c("turquoise3", "yellow3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Amazon Textract", "Tesseract")) +
+  scale_fill_manual(values = c("turquoise3", "yellow3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Amazon Textract", "Tesseract")) +
+  theme_minimal() +
+  labs(title = "One noise layer (n=11,592)", x = "", y = "") +
+  coord_cartesian(xlim=c(0, 50)) +
+  theme(plot.title=element_text(hjust=0.5))
+
+
+## All engines, two noise levels
+ob_two_layers <- ob %>%
+  filter(noise %in% noise_types[15:44])
+
+ob_two_layers_summary <- ob_two_layers %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(word_error), 1),
+            peaks = max((density(word_error))$y[])) %>%
+  mutate(yPos = max(peaks)*.8, xPos = means)
+
+p4 <- ggplot(ob_two_layers, aes(word_error, fill = engine)) +
+  geom_density(alpha = 0.6, lwd = 0.1) +
+  geom_label(data = ob_two_layers_summary, 
+             aes(x = xPos, y = yPos, label = xPos, colour=engine),
+             colour="black", 
+             alpha = 0.6,
+             show.legend = FALSE) +
+  geom_segment(data = ob_two_layers_summary, 
+               aes(x = means, y = 0, xend = means, yend = max(peaks)*.7, colour=engine),
+               linetype = "dashed", 
+               size=1, 
+               alpha = 0.6, 
+               show.legend = FALSE) +
+  scale_color_manual(values = c("turquoise3", "yellow3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Amazon Textract", "Tesseract")) +
+  scale_fill_manual(values = c("turquoise3", "yellow3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Amazon Textract", "Tesseract")) +
+  theme_minimal() +
+  labs(title = "Two noise layers (n=28,980)", x = "Word error (percent)", y = "") +
+  coord_cartesian(xlim=c(0, 50)) +
+  theme(plot.title=element_text(hjust=0.5))
+
+###############
+# Yarmouk
+
+yar <- df %>%  filter(dataset == "yarmouk")
+
+yar_summary <- yar %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(word_error), 1),
+            peaks = max((density(word_error))$y[])) %>%
+  mutate(yPos = max(peaks)*.8, xPos = means)
+
+## All engines, all noise levels - see 1) above
+p5 <- ggplot(yar, aes(word_error, fill = engine)) +
+  geom_density(alpha = 0.6, lwd = 0.1, show.legend = FALSE) +
+  geom_label(data = yar_summary, 
+             aes(x = xPos, y = yPos, label = xPos, colour=engine),
+             colour="black", 
+             alpha = 0.6,
+             show.legend = FALSE) +
+  geom_segment(data = yar_summary, 
+               aes(x = means, y = 0, xend = means, yend = max(peaks)*.7, colour=engine),
+               linetype = "dashed", 
+               size=1, 
+               alpha = 0.6, 
+               show.legend = FALSE) +
+  scale_color_manual(values = c("turquoise3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Tesseract")) +
+  scale_fill_manual(values = c("turquoise3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Tesseract")) +
+  theme_minimal() +
+  labs(title = "ARABIC\n\nAll documents combined (n=8,800)", x = "", y = "") +
+  coord_cartesian(xlim=c(0, 50)) +
+  theme(plot.title=element_text(hjust=0.5))
+
+## All engines, no noise
+
+yar_no_noise <- yar %>%
+  filter(noise %in% noise_types[1:2])
+
+yar_no_noise_summary <- yar_no_noise %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(word_error), 1),
+            peaks = max((density(word_error))$y[])) %>%
+  mutate(yPos = max(peaks)*.8, xPos = means)
+
+p6 <- ggplot(yar_no_noise, aes(word_error, fill = engine)) +
+  geom_density(alpha = 0.6, lwd = 0.1, show.legend = FALSE) +
+  geom_label(data = yar_no_noise_summary, 
+             aes(x = xPos, y = yPos, label = xPos, colour=engine),
+             colour="black", 
+             alpha = 0.6,
+             show.legend = FALSE) +
+  geom_segment(data = yar_no_noise_summary, 
+               aes(x = means, y = 0, xend = means, yend = max(peaks)*.7, colour=engine),
+               linetype = "dashed", 
+               size=1, 
+               alpha = 0.6, 
+               show.legend = FALSE) +
+  scale_color_manual(values = c("turquoise3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Tesseract")) +
+  scale_fill_manual(values = c("turquoise3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Tesseract")) +
+  theme_minimal() +
+  labs(title = "No added noise (n=400)", x = "", y = "") +
+  coord_cartesian(xlim=c(0, 50)) +
+  theme(plot.title=element_text(hjust=0.5))
+
+## All engines, one noise level
+yar_one_layer <- yar %>%
+  filter(noise %in% noise_types[3:14])
+
+yar_one_layer_summary <- yar_one_layer %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(word_error), 1),
+            peaks = max((density(word_error))$y[])) %>%
+  mutate(yPos = max(peaks)*.8, xPos = means)
+
+p7 <- ggplot(yar_one_layer, aes(word_error, fill = engine)) +
+  geom_density(alpha = 0.6, lwd = 0.1, show.legend = FALSE) +
+  geom_label(data = yar_one_layer_summary, 
+             aes(x = xPos, y = yPos, label = xPos, colour=engine),
+             colour="black", 
+             alpha = 0.6,
+             show.legend = FALSE) +
+  geom_segment(data = yar_one_layer_summary, 
+               aes(x = means, y = 0, xend = means, yend = max(peaks)*.7, colour=engine),
+               linetype = "dashed", 
+               size=1, 
+               alpha = 0.6, 
+               show.legend = FALSE) +
+  scale_color_manual(values = c("turquoise3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Tesseract")) +
+  scale_fill_manual(values = c("turquoise3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Tesseract")) +
+  theme_minimal() +
+  labs(title = "One noise layer (n=2,400)", x = "", y = "") +
+  coord_cartesian(xlim=c(0, 50)) +
+  theme(plot.title=element_text(hjust=0.5))
+
+## All engines, two noise levels
+
+yar_two_layers <- yar %>%
+  filter(noise %in% noise_types[15:44])
+
+yar_two_layers_summary <- yar_two_layers %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(word_error), 1),
+            peaks = max((density(word_error))$y[])) %>%
+  mutate(yPos = max(peaks)*.8, xPos = means)
+
+p8 <- ggplot(yar_two_layers, aes(word_error, fill = engine)) +
+  geom_density(alpha = 0.6, lwd = 0.1, show.legend = FALSE) +
+  geom_label(data = yar_two_layers_summary, 
+             aes(x = xPos, y = yPos, label = xPos, colour=engine),
+             colour="black", 
+             alpha = 0.6,
+             show.legend = FALSE) +
+  geom_segment(data = yar_two_layers_summary, 
+               aes(x = means, y = 0, xend = means, yend = max(peaks)*.7, colour=engine),
+               linetype = "dashed", 
+               size=1, 
+               alpha = 0.6, 
+               show.legend = FALSE) +
+  scale_color_manual(values = c("turquoise3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Tesseract")) +
+  scale_fill_manual(values = c("turquoise3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Tesseract")) +
+  theme_minimal() +
+  labs(title = "Two noise layers (n=6000)", x = "", y = "") +
+  coord_cartesian(xlim=c(0, 50)) +
+  theme(plot.title=element_text(hjust=0.5))
+
+patchwork <- (p1 | p5) / (p2| p6) / (p3 | p7) / (p4 | p8) +  plot_layout(guides = "collect") & theme(legend.position = 'bottom')
+
+patchwork  + plot_annotation(title="Mean error rates in coloured boxes. X axes cropped for visibility, leaving out the tails of the distributions.\n\n")
+```
+
+
+
+```{r fig.cap='Word error rates by engine and noise type for English-language documents', fig.width=10,fig.height=13, echo=FALSE, message=FALSE, warning=FALSE}
+ob_tess <- ob %>% filter(engine == "tesseract")
+ob_tex <- ob %>% filter(engine == "textract")
+ob_dai <- ob %>% filter(engine == "dai")
+
+ob_tess_summary <- ob_tess %>% 
+  group_by(noise) %>% 
+  summarize(word_error_mean = round(mean(word_error), 1))
+
+ob_tex_summary <- ob_tex %>% 
+  group_by(noise) %>% 
+  summarize(word_error_mean = round(mean(word_error), 1))
+
+ob_dai_summary <- ob_dai %>% 
+  group_by(noise) %>% 
+  summarize(word_error_mean = round(mean(word_error), 1))
+
+p9 <- ggplot(ob_dai, aes(x = word_error, y = rev(noise))) +
+  geom_density_ridges(aes(fill = engine), 
+                      scale = 1.5, 
+                      size = 0.2, 
+                      fill = "#00AFBB", 
+                      quantile_lines = TRUE, 
+                      quantiles = 2, 
+                      vline_size = 1.1, 
+                      vline_color = "green") +
+  geom_text(data = ob_dai_summary, 
+            aes(y = noise, x = 55, label = rev(word_error_mean)),
+            nudge_y = 0.5,
+            fontface = "bold",
+            size = 3) +
+  annotate("text", x = 55, y = 45.2, label = "mean", fontface = "bold", size = 3) +
+  annotate("text", x = 2, y = 46.5, label = "\nmedian", fontface = "bold", size = 3, color = "green2") +
+  scale_x_continuous(limits = c(0,100)) +
+  labs(x = "", y="") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_y_discrete(labels = rev(unique(ob_dai$noise))) +
+  ggtitle("Google Document AI") +
+  theme(text = element_text(face = "bold"),
+        plot.title=element_text(hjust=0.5))
+
+p10 <- ggplot(ob_tex, aes(x = word_error,
+                          y = rev(noise))) +
+  geom_density_ridges(aes(fill = engine), 
+                      scale = 1.5, 
+                      size = 0.2, 
+                      fill = "#E7B800", 
+                      quantile_lines = TRUE, 
+                      quantiles = 2, 
+                      vline_size = 1.1, 
+                      vline_color = "green") +
+  geom_text(data = ob_tex_summary, 
+            aes(y = noise, x = 55, label = rev(word_error_mean)),
+            nudge_y = 0.5,
+            fontface = "bold",
+            size = 3) +
+  annotate("text", x = 55, y = 45.2, label = "", fontface = "bold", size = 3) +
+  annotate("text", x = 5, y = 46.5, label = "\n", fontface = "bold", size = 3) +
+  scale_x_continuous(limits = c(0,100)) +
+  labs(x = "", y="") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_y_discrete(labels = rev(unique(ob_dai$noise))) +
+  theme(axis.text.y=element_blank()) +
+  ggtitle("Amazon Textract") +
+  theme(text = element_text(face = "bold"),
+        plot.title=element_text(hjust=0.5))
+
+p11 <- ggplot(ob_tess, aes(x = word_error,
+                           y = rev(noise))) +
+  geom_density_ridges(aes(fill = engine), 
+                      scale = 1.5, 
+                      size = 0.2, 
+                      fill = "#FC4E07", 
+                      quantile_lines = TRUE, 
+                      quantiles = 2, 
+                      vline_size = 1.1, 
+                      vline_color = "green") +
+  geom_text(data = ob_tess_summary,
+            aes(y = noise, x = 55, label = rev(word_error_mean)),
+            nudge_y = 0.5,
+            fontface = "bold",
+            size = 3) +
+  annotate("text", x = 55, y = 45.2, label = "", fontface = "bold", size = 3) +
+  annotate("text", x = 5, y = 46.5, label = "\n", fontface = "bold", size = 3) +
+  scale_x_continuous(limits = c(0,100)) +
+  labs(x = "", y="") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_y_discrete(labels = rev(unique(ob_dai$noise))) +
+  theme(axis.text.y=element_blank()) +
+  ggtitle("Tesseract") +
+  theme(text = element_text(face = "bold"),
+        plot.title=element_text(hjust=0.5))
+
+patch <- p9 + p10 + p11
+
+patch + plot_annotation(subtitle = "Data: Single-column text in historical book scans with noise added articifially (n=42,504; 322 per engine and noise type).\nNoise codes: 'col'=colour, 'bin'=binary, 'blur'=blur, 'weak'=weak ink, 'snp'=salt&pepper, 'wm'=watermark, 'scrib'=scribbles, 'ink'=ink stains.",
+                        caption="Word error (percent)",
+                        theme=theme(plot.subtitle = element_text(size=11),
+                                    plot.caption=element_text(hjust=0.5, size=12,
+                                                              margin=margin(t=0))))
+```
+
+```{r fig.cap='Word error rates by engine and noise type for Arabic-language documents', fig.width=10,fig.height=13, echo=FALSE, message=FALSE, warning=FALSE}
+# https://community.rstudio.com/t/ggridges-add-labels-showing-median-values/8767/3
+
+yar_tess <- yar %>% filter(engine == "tesseract")
+yar_dai <- yar %>% filter(engine == "dai")
+yar_dai_summary <- yar_dai %>% 
+  group_by(noise) %>% 
+  summarize(word_error_mean = round(mean(word_error), 1))
+yar_tess_summary <- yar_tess %>% 
+  group_by(noise) %>% 
+  summarize(word_error_mean = round(mean(word_error), 1))
+
+p12 <- ggplot(yar_dai, aes(x = word_error, 
+                           y = rev(noise))) +
+  geom_density_ridges(aes(fill = engine), 
+                      scale = 1.5, 
+                      size = 0.2, 
+                      fill = "#00AFBB", 
+                      quantile_lines = TRUE, 
+                      quantiles = 2, 
+                      vline_size = 1.1, 
+                      vline_color = "green") +
+  geom_text(data = yar_dai_summary, 
+            aes(y = noise, x = 55, label = rev(word_error_mean)), nudge_y = 0.5,
+            fontface = "bold",
+            size = 3) +
+  annotate("text", x = 55, y = 45.2, label = "mean", fontface = "bold", size = 3) +
+  annotate("text", x = 7, y = 46, label = "\nmedian", fontface = "bold", size = 3, color = "green4") +
+  scale_x_continuous(limits = c(0,100)) +
+  labs(x = "", y="") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_y_discrete(labels = rev(unique(yar_dai$noise))) +
+  ggtitle("Google Document AI") +
+  theme(text = element_text(face = "bold"),
+        plot.title=element_text(hjust=0.5))
+
+p13 <- ggplot(yar_tess, aes(x = word_error,
+                            y = rev(noise))) +
+  geom_density_ridges(aes(fill = engine), 
+                      scale = 1.5, 
+                      size = 0.2, 
+                      fill = "#FC4E07", 
+                      quantile_lines = TRUE, 
+                      quantiles = 2, 
+                      vline_size = 1.1, 
+                      vline_color = "green") +
+  geom_text(data = yar_tess_summary, 
+             aes(y = noise, 
+                 x = 55,
+                 #x = rev(word_error_mean), 
+                 label = rev(word_error_mean)),
+            nudge_y = 0.5,
+            fontface = "bold",
+            size = 3) +
+  annotate("text", x = 55, y = 45.2, label = "") +
+  annotate("text", x = 5, y = 46, label = "\n") +
+  scale_x_continuous(limits = c(0,100)) +
+  labs(x = "", y="") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_y_discrete(labels = rev(unique(yar_dai$noise))) +
+  theme(axis.text.y=element_blank()) +
+  ggtitle("Tesseract") +
+  theme(text = element_text(face = "bold"),
+        plot.title=element_text(hjust=0.5))
+
+patch <- p12 + plot_spacer() + p13 
+
+patch + plot_annotation(subtitle = "Data: Single-column text in image scans of Arabic Wikipedia pages with noise added articifially (n = 8800; 100 per engine and noise type).\nNoise codes: 'col'=colour, 'bin'=binary, 'blur'=blur, 'weak'=weak ink, 'snp'=salt&pepper, 'wm'=watermark, 'scrib'=scribbles, 'ink'=ink stains.",
+                        caption="Word error (percent)",
+                        theme=theme(plot.subtitle=element_text(size=11),
+                                    plot.caption=element_text(hjust=0.5, 
+                                                              size=12, 
+                                                              margin=margin(t=0))))
+```
+
+# Conclusion
+
+This article described a systematic test of three general OCR processors on a large new dataset of English and Arabic documents. Its results suggests that the server-based engines *Document AI* and *Textract* deliver markedly higher out-of-the-box accuracy than the standalone *Tesseract* library, especially on noisy documents. It also indicates that certain types of "integrated" noise, such as blur and salt and pepper, generate more error than "superimposed" noise such as watermarks, scribbles, and even ink stains. Furthermore, it suggests that the "OCR language gap" still persists, although *Document AI* seems to have partially closed it, at least for Arabic. 
+
+The findings can help scholars develop OCR solutions to suit their use cases. Out-of-the box accuracy rates are not the only relevant metric, since Tesseract and other engines can be trained, and since server-based processors have drawbacks such as financial cost and data privacy concerns. But having baseline data on relative processor performance and differential effects of noise types can inform the choice of processor and help design preprocessing strategies.  
+
+The article also contributes to specialist OCR research in three ways: by presenting new benchmarking data, by developing a new systematic approach to studying noise effects, and by introducing a large new OCR dataset for use in future OCR research. The study has several limitations, notably the narrow range of processors and the use of single-column test materials, which does not capture layout parsing capabilities. This author's anecdotal experience with *Document AI* and *Textract* on multi-column text suggest that these engines have excellent character recognition but still struggle with layout parsing. This, in other words, appears to be the principal remaining frontier in OCR development.
+
+\newpage
+
+# References
