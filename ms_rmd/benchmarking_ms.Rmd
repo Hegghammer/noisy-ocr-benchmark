@@ -25,7 +25,7 @@ linestretch: 2
 fontsize: 12pt
 indent: yes
 geometry: margin=1.25in
-bibliography: /home/thomas/Vault/Nextcloud/Documents/Jobb/master.bib
+bibliography: benchmarking.bib
 #bibliography: D:/Nextcloud/Documents/Jobb/master.bib
 thanks: I thank Neil Ketchley and the participants in the University of Oslo Political Data Science seminar on 17 June 2021 for inputs and suggestions. Supplementary information and replication materials are available at https://github.com/Hegghammer/noisy-ocr-benchmark.
 abstract: \noindent 
