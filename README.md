@@ -1,12 +1,12 @@
 # An OCR Benchmarking Experiment
   
-This repository holds replication materials for the manuscript "OCR with Tesseract, Amazon Textract, and Google Document AI: A Benchmarking Experiment". It contains:
+This repository holds replication materials for the manuscript ["OCR with Tesseract, Amazon Textract, and Google Document AI: A Benchmarking Experiment"](https://osf.io/preprints/socarxiv/6zfvs). It contains:
 
 - The .RMD file of the manuscript with R code for all the figures.
 - 51,304 .TXT files with the text output from all the OCR processing requests.
 - A .CSV file with word and character accuracy rates for all the OCR output.
 
-The raw image test materials reside in a separate repository for space reasons.
+The image test materials reside in a separate Zenodo repository as the ["Noisy OCR Dataset"](https://zenodo.org/record/5068735) (NOD).
 
 From the abstract: 
 
