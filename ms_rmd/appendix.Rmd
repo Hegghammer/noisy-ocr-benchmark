@@ -1,0 +1,664 @@
+---
+title: "Appendix"
+subtitle: "To the manuscript 'OCR with Tesseract, Amazon Textract, and Google Document AI: A Benchmarking
+ Experiment'"
+output: 
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+    extra_dependencies: "subfig"
+    fig_caption: yes
+    keep_tex: yes
+    number_sections: yes
+header-includes:
+  - \usepackage{amsmath}
+  - \usepackage{amssymb}
+  - \usepackage{booktabs}
+  - \usepackage{inputenc}
+  - \usepackage{hyperref}
+  - \usepackage{floatrow}
+  - \floatsetup[figure]{capposition=top}
+  - \floatsetup[table]{capposition=top}
+toc_depth: 1
+number_sections: yes
+fontsize: 10pt
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+options(scipen = 999)
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(kableExtra)
+library(here)
+library(stringr)
+library(dplyr)
+library(cowplot)
+library(patchwork)
+library(ggridges)
+library(viridis)
+library(extrafont)
+library(ggplot2)
+library(magrittr)
+df <- read.csv(here("data", "ocr_benchmark_master.csv"))
+df$word_acc_na_as_zero <- df$word_acc
+df$word_acc_na_as_zero[is.na(df$word_acc_na_as_zero)] <- 0
+df$engine <- factor(df$engine, levels = c("dai", "textract", "tesseract"))
+df$char_acc_no_outliers <- df$char_acc
+df$char_acc_no_outliers[df$char_acc_no_outliers > 100 | df$char_acc_no_outliers < 0] <- NA 
+df$char_error <- 100-df$char_acc_no_outliers
+df$word_error <- 100-df$word_acc_na_as_zero
+df$noise <- str_replace_all(df$noise, "_", " + ")
+noise_types <- unique(df$noise)
+df$noise <- factor(df$noise, levels = noise_types)
+```
+
+\newpage
+
+# Character accuracy results
+
+## Character error rates by engine and noise level for English and Arabic documents
+
+```{r fig.width=10,fig.height=13, out.width="90%", echo=FALSE, message=FALSE, warning=FALSE}
+ob <- df %>% filter(dataset == "old_books")
+
+ob_summary <- ob %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(char_error, na.rm = TRUE), 1),
+            peaks = max((density(char_error, na.rm = TRUE))$y[])) %>%
+  mutate(yPos = max(peaks, na.rm = TRUE)*.8, xPos = c(means[1]-0.5, means[2]+0.5, means[3]))
+
+## All engines, all noise levels
+p1 <- ggplot(ob, aes(char_error, fill = engine)) +
+  geom_density(alpha = 0.6, lwd = 0.1) +
+  geom_label(data = ob_summary, 
+             aes(x = xPos, y = yPos, label = means, colour=engine),
+             colour="black", 
+             alpha = 0.6,
+             show.legend = FALSE) +
+  geom_segment(data = ob_summary, 
+               aes(x = means, y = 0, xend = means, yend = max(peaks)*.7, colour=engine),
+               linetype = "dashed", 
+               size=1, 
+               alpha = 0.6, 
+               show.legend = FALSE) +
+  scale_color_manual(values = c("turquoise3", "yellow3", "red2"),
+                     name = "",
+                     labels = c("Google Document AI", "Amazon Textract", "Tesseract")) +
+  scale_fill_manual(values = c("turquoise3", "yellow3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Amazon Textract", "Tesseract")) +
+  theme_minimal() +
+  labs(title = "ENGLISH\n\nAll documents combined (n=42,504)", x = "", y = "") +
+  coord_cartesian(xlim=c(0, 50)) +
+  theme(plot.title=element_text(hjust=0.5))
+
+
+## All engines, no noise
+ob_no_noise <- ob %>%
+  filter(noise %in% noise_types[1:2])
+
+ob_no_noise_summary <- ob_no_noise %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(char_error, na.rm = TRUE), 1),
+            peaks = max((density(char_error, na.rm = TRUE))$y[])) %>%
+  mutate(yPos = max(peaks, na.rm = TRUE)*.8, xPos = c(0, 4, 8))
+
+p2 <- ggplot(ob_no_noise, aes(char_error, fill = engine)) +
+  geom_density(alpha = 0.6, lwd = 0.1) +
+  geom_label(data = ob_no_noise_summary, 
+             aes(x = xPos, y = yPos, label = means, colour=engine),
+             colour="black", 
+             alpha = 0.6,
+             show.legend = FALSE) +
+  geom_segment(data = ob_no_noise_summary, 
+               aes(x = means, y = 0, xend = means, yend = max(peaks)*.7, colour=engine),
+               linetype = "dashed", 
+               size=1, 
+               alpha = 0.6, 
+               show.legend = FALSE) +
+  scale_color_manual(values = c("turquoise3", "yellow3", "red2"),
+                     name = "",
+                     labels = c("Google Document AI", "Amazon Textract", "Tesseract")) +
+  scale_fill_manual(values = c("turquoise3", "yellow3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Amazon Textract", "Tesseract")) +
+  theme_minimal() +
+  labs(title = "No added noise (n=1,932)", x = "", y = "Density") +
+  coord_cartesian(xlim=c(0, 50)) +
+  theme(plot.title=element_text(hjust=0.5))
+
+## All engines, one noise level
+
+ob_one_layer <- ob %>%
+  filter(noise %in% noise_types[3:14])
+
+ob_one_layer_summary <- ob_one_layer %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(char_error, na.rm = TRUE), 1),
+            peaks = max((density(char_error, na.rm = TRUE))$y[])) %>%
+  mutate(yPos = max(peaks)*.8, xPos = means)
+
+
+p3 <- ggplot(ob_one_layer, aes(char_error, fill = engine)) +
+  geom_density(alpha = 0.6, lwd = 0.1) +
+  geom_label(data = ob_one_layer_summary, 
+             aes(x = xPos, y = yPos, label = xPos, colour=engine),
+             colour="black", 
+             alpha = 0.6,
+             show.legend = FALSE) +
+  geom_segment(data = ob_one_layer_summary, 
+               aes(x = means, y = 0, xend = means, yend = max(peaks)*.7, colour=engine),
+               linetype = "dashed", 
+               size=1, 
+               alpha = 0.6, 
+               show.legend = FALSE) +
+  scale_color_manual(values = c("turquoise3", "yellow3", "red2"),
+                     name = "",
+                     labels = c("Google Document AI", "Amazon Textract", "Tesseract")) +
+  scale_fill_manual(values = c("turquoise3", "yellow3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Amazon Textract", "Tesseract")) +
+  theme_minimal() +
+  labs(title = "One noise layer (n=11,592)", x = "", y = "") +
+  coord_cartesian(xlim=c(0, 50)) +
+  theme(plot.title=element_text(hjust=0.5))
+
+
+## All engines, two noise levels
+ob_two_layers <- ob %>%
+  filter(noise %in% noise_types[15:44])
+
+ob_two_layers_summary <- ob_two_layers %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(char_error, na.rm = TRUE), 1),
+            peaks = max((density(char_error, na.rm = TRUE))$y[])) %>%
+  mutate(yPos = max(peaks, na.rm = TRUE)*.8, xPos = means)
+
+ob_two_layers_summary <- ob_two_layers %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(word_error), 1),
+            peaks = max((density(word_error))$y[])) %>%
+  mutate(yPos = max(peaks)*.8, xPos = means)
+
+
+p4 <- ggplot(ob_two_layers, aes(char_error, fill = engine)) +
+  geom_density(alpha = 0.6, lwd = 0.1) +
+  geom_label(data = ob_two_layers_summary, 
+             aes(x = xPos, y = yPos, label = xPos, colour=engine),
+             colour="black", 
+             alpha = 0.6,
+             show.legend = FALSE) +
+  geom_segment(data = ob_two_layers_summary, 
+               aes(x = means, y = 0, xend = means, yend = max(peaks)*.7, colour=engine),
+               linetype = "dashed", 
+               size=1, 
+               alpha = 0.6, 
+               show.legend = FALSE) +
+  scale_color_manual(values = c("turquoise3", "yellow3", "red2"),
+                     name = "",
+                     labels = c("Google Document AI", "Amazon Textract", "Tesseract")) +
+  scale_fill_manual(values = c("turquoise3", "yellow3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Amazon Textract", "Tesseract")) +
+  theme_minimal() +
+  labs(title = "Two noise layers (n=28,980)", x = "Character error (percent)", y = "") +
+  coord_cartesian(xlim=c(0, 50)) +
+  theme(plot.title=element_text(hjust=0.5))
+
+###############
+# Yarmouk
+
+yar <- df %>%  filter(dataset == "yarmouk")
+
+yar_summary <- yar %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(char_error, na.rm = TRUE), 1),
+            peaks = max(density(char_error, na.rm = TRUE)$y[])) %>%
+  mutate(yPos = max(peaks, na.rm = TRUE)*.8, xPos = means)
+
+## All engines, all noise levels - see 1) above
+p5 <- ggplot(yar, aes(char_error, fill = engine)) +
+  geom_density(alpha = 0.6, lwd = 0.1, show.legend = FALSE) +
+  geom_label(data = yar_summary, 
+             aes(x = xPos, y = yPos, label = xPos, colour=engine),
+             colour="black", 
+             alpha = 0.6,
+             show.legend = FALSE) +
+  geom_segment(data = yar_summary, 
+               aes(x = means, y = 0, xend = means, yend = max(peaks)*.7, colour=engine),
+               linetype = "dashed", 
+               size=1, 
+               alpha = 0.6, 
+               show.legend = FALSE) +
+  scale_color_manual(values = c("turquoise3", "red2"),
+                     name = "",
+                     labels = c("Google Document AI", "Tesseract")) +
+  scale_fill_manual(values = c("turquoise3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Tesseract")) +
+  theme_minimal() +
+  labs(title = "ARABIC\n\nAll documents combined (n=8,800)", x = "", y = "") +
+  coord_cartesian(xlim=c(0, 50)) +
+  theme(plot.title=element_text(hjust=0.5))
+
+## All engines, no noise
+
+yar_no_noise <- yar %>%
+  filter(noise %in% noise_types[1:2])
+
+yar_no_noise_summary <- yar_no_noise %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(char_error, na.rm = TRUE), 1),
+            peaks = max((density(char_error, na.rm = TRUE))$y[])) %>%
+  mutate(yPos = max(peaks, na.rm = TRUE)*.8, xPos = means)
+
+p6 <- ggplot(yar_no_noise, aes(char_error, fill = engine)) +
+  geom_density(alpha = 0.6, lwd = 0.1, show.legend = FALSE) +
+  geom_label(data = yar_no_noise_summary, 
+             aes(x = xPos, y = yPos, label = xPos, colour=engine),
+             colour="black", 
+             alpha = 0.6,
+             show.legend = FALSE) +
+  geom_segment(data = yar_no_noise_summary, 
+               aes(x = means, y = 0, xend = means, yend = max(peaks)*.7, colour=engine),
+               linetype = "dashed", 
+               size=1, 
+               alpha = 0.6, 
+               show.legend = FALSE) +
+  scale_color_manual(values = c("turquoise3", "red2"),
+                     name = "",
+                     labels = c("Google Document AI", "Tesseract")) +
+  scale_fill_manual(values = c("turquoise3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Tesseract")) +
+  theme_minimal() +
+  labs(title = "No added noise (n=400)", x = "", y = "") +
+  coord_cartesian(xlim=c(0, 50)) +
+  theme(plot.title=element_text(hjust=0.5))
+
+## All engines, one noise level
+yar_one_layer <- yar %>%
+  filter(noise %in% noise_types[3:14])
+
+yar_one_layer_summary <- yar_one_layer %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(char_error, na.rm = TRUE), 1),
+            peaks = max((density(char_error, na.rm = TRUE))$y[])) %>%
+  mutate(yPos = max(peaks, na.rm = TRUE)*.8, xPos = means)
+
+p7 <- ggplot(yar_one_layer, aes(char_error, fill = engine)) +
+  geom_density(alpha = 0.6, lwd = 0.1, show.legend = FALSE) +
+  geom_label(data = yar_one_layer_summary, 
+             aes(x = xPos, y = yPos, label = xPos, colour=engine),
+             colour="black", 
+             alpha = 0.6,
+             show.legend = FALSE) +
+  geom_segment(data = yar_one_layer_summary, 
+               aes(x = means, y = 0, xend = means, yend = max(peaks)*.7, colour=engine),
+               linetype = "dashed", 
+               size=1, 
+               alpha = 0.6, 
+               show.legend = FALSE) +
+  scale_color_manual(values = c("turquoise3", "red2"),
+                     name = "",
+                     labels = c("Google Document AI", "Tesseract")) +
+  scale_fill_manual(values = c("turquoise3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Tesseract")) +
+  theme_minimal() +
+  labs(title = "One noise layer (n=2,400)", x = "", y = "") +
+  coord_cartesian(xlim=c(0, 50)) +
+  theme(plot.title=element_text(hjust=0.5))
+
+## All engines, two noise levels
+
+yar_two_layers <- yar %>%
+  filter(noise %in% noise_types[15:44])
+
+yar_two_layers_summary <- yar_two_layers %>% 
+  group_by(engine) %>% 
+  summarize(means = round(mean(char_error, na.rm = TRUE), 1),
+            peaks = max((density(char_error, na.rm = TRUE))$y[])) %>%
+  mutate(yPos = max(peaks)*.8, xPos = means)
+
+p8 <- ggplot(yar_two_layers, aes(char_error, fill = engine)) +
+  geom_density(alpha = 0.6, lwd = 0.1, show.legend = FALSE) +
+  geom_label(data = yar_two_layers_summary, 
+             aes(x = xPos, y = yPos, label = xPos, colour=engine),
+             colour="black", 
+             alpha = 0.6,
+             show.legend = FALSE) +
+  geom_segment(data = yar_two_layers_summary, 
+               aes(x = means, y = 0, xend = means, yend = max(peaks)*.7, colour=engine),
+               linetype = "dashed", 
+               size=1, 
+               alpha = 0.6, 
+               show.legend = FALSE) +
+  scale_color_manual(values = c("turquoise3", "red2"),
+                     name = "",
+                     labels = c("Google Document AI", "Tesseract")) +
+  scale_fill_manual(values = c("turquoise3", "red2"),
+                    name = "",
+                    labels = c("Google Document AI", "Tesseract")) +
+  theme_minimal() +
+  labs(title = "Two noise layers (n=6000)", x = "", y = "") +
+  coord_cartesian(xlim=c(0, 50)) +
+  theme(plot.title=element_text(hjust=0.5))
+
+patchwork <- (p1 | p5) / (p2| p6) / (p3 | p7) / (p4 | p8) +  plot_layout(guides = "collect") & theme(legend.position = 'bottom')
+
+patchwork  + plot_annotation(title="Mean error rates in coloured boxes. X axes cropped for visibility, leaving out the tails of the distributions.\n\n")
+```
+
+## Character error rates by engine and noise type for English-language documents
+
+```{r fig.width=10,fig.height=13, out.width="90%", echo=FALSE, message=FALSE, warning=FALSE}
+ob_tess <- ob %>% filter(engine == "tesseract")
+ob_tex <- ob %>% filter(engine == "textract")
+ob_dai <- ob %>% filter(engine == "dai")
+
+ob_tess_summary <- ob_tess %>% 
+  group_by(noise) %>% 
+  summarize(char_error_mean = round(mean(char_error, na.rm = TRUE), 1))
+
+ob_tex_summary <- ob_tex %>% 
+  group_by(noise) %>% 
+  summarize(char_error_mean = round(mean(char_error, na.rm = TRUE), 1))
+
+ob_dai_summary <- ob_dai %>% 
+  group_by(noise) %>% 
+  summarize(char_error_mean = round(mean(char_error, na.rm = TRUE), 1))
+
+p9 <- ggplot(ob_dai, aes(x = char_error, y = rev(noise))) +
+  geom_density_ridges(aes(fill = engine), 
+                      scale = 1.5, 
+                      size = 0.2, 
+                      fill = "#00AFBB", 
+                      quantile_lines = TRUE, 
+                      quantiles = 2, 
+                      vline_size = 1.1, 
+                      vline_color = "green") +
+  geom_text(data = ob_dai_summary, 
+            aes(y = noise, x = 55, label = rev(char_error_mean)),
+            nudge_y = 0.5,
+            fontface = "bold",
+            size = 3) +
+  annotate("text", x = 55, y = 45.2, label = "mean", fontface = "bold", size = 3) +
+  annotate("text", x = 2, y = 46.5, label = "\nmedian", fontface = "bold", size = 3, color = "green2") +
+  scale_x_continuous(limits = c(0,100)) +
+  labs(x = "", y="") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_y_discrete(labels = rev(unique(ob_dai$noise))) +
+  ggtitle("Google Document AI") +
+  theme(text = element_text(face = "bold"),
+        plot.title=element_text(hjust=0.5))
+
+p10 <- ggplot(ob_tex, aes(x = char_error,
+                          y = rev(noise))) +
+  geom_density_ridges(aes(fill = engine), 
+                      scale = 1.5, 
+                      size = 0.2, 
+                      fill = "#E7B800", 
+                      quantile_lines = TRUE, 
+                      quantiles = 2, 
+                      vline_size = 1.1, 
+                      vline_color = "green") +
+  geom_text(data = ob_tex_summary, 
+            aes(y = noise, x = 55, label = rev(char_error_mean)),
+            nudge_y = 0.5,
+            fontface = "bold",
+            size = 3) +
+  annotate("text", x = 55, y = 45.2, label = "", fontface = "bold", size = 3) +
+  annotate("text", x = 5, y = 46.5, label = "\n", fontface = "bold", size = 3) +
+  scale_x_continuous(limits = c(0,100)) +
+  labs(x = "", y="") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_y_discrete(labels = rev(unique(ob_dai$noise))) +
+  theme(axis.text.y=element_blank()) +
+  ggtitle("Amazon Textract") +
+  theme(text = element_text(face = "bold"),
+        plot.title=element_text(hjust=0.5))
+
+p11 <- ggplot(ob_tess, aes(x = char_error,
+                           y = rev(noise))) +
+  geom_density_ridges(aes(fill = engine), 
+                      scale = 1.5, 
+                      size = 0.2, 
+                      fill = "#FC4E07", 
+                      quantile_lines = TRUE, 
+                      quantiles = 2, 
+                      vline_size = 1.1, 
+                      vline_color = "green") +
+  geom_text(data = ob_tess_summary,
+            aes(y = noise, x = 55, label = rev(char_error_mean)),
+            nudge_y = 0.5,
+            fontface = "bold",
+            size = 3) +
+  annotate("text", x = 55, y = 45.2, label = "", fontface = "bold", size = 3) +
+  annotate("text", x = 5, y = 46.5, label = "\n", fontface = "bold", size = 3) +
+  scale_x_continuous(limits = c(0,100)) +
+  labs(x = "", y="") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_y_discrete(labels = rev(unique(ob_dai$noise))) +
+  theme(axis.text.y=element_blank()) +
+  ggtitle("Tesseract") +
+  theme(text = element_text(face = "bold"),
+        plot.title=element_text(hjust=0.5))
+
+patch <- p9 + p10 + p11
+
+patch + plot_annotation(subtitle = "Data: Single-column text in historical book scans with noise added articifially (n=42,504; 322 per engine and noise type).\nNoise codes: 'col'=colour, 'bin'=binary, 'blur'=blur, 'weak'=weak ink, 'snp'=salt&pepper, 'wm'=watermark, 'scrib'=scribbles, 'ink'=ink stains.",
+                        caption="Character error (percent)",
+                        theme=theme(plot.subtitle = element_text(size=11),
+                                    plot.caption=element_text(hjust=0.5, size=12,
+                                                              margin=margin(t=0))))
+```
+
+## Character error rates by engine and noise type for Arabic-language documents
+
+```{r fig.width=10,fig.height=13, out.width="90%", echo=FALSE, message=FALSE, warning=FALSE}
+# https://community.rstudio.com/t/ggridges-add-labels-showing-median-values/8767/3
+
+yar_tess <- yar %>% filter(engine == "tesseract")
+yar_dai <- yar %>% filter(engine == "dai")
+yar_dai_summary <- yar_dai %>% 
+  group_by(noise) %>% 
+  summarize(char_error_mean = round(mean(char_error, na.rm = TRUE), 1))
+yar_tess_summary <- yar_tess %>% 
+  group_by(noise) %>% 
+  summarize(char_error_mean = round(mean(char_error, na.rm = TRUE), 1))
+
+p12 <- ggplot(yar_dai, aes(x = char_error, 
+                           y = rev(noise))) +
+  geom_density_ridges(aes(fill = engine), 
+                      scale = 1.5, 
+                      size = 0.2, 
+                      fill = "#00AFBB", 
+                      quantile_lines = TRUE, 
+                      quantiles = 2, 
+                      vline_size = 1.1, 
+                      vline_color = "green") +
+  geom_text(data = yar_dai_summary, 
+            aes(y = noise, x = 55, label = rev(char_error_mean)), nudge_y = 0.5,
+            fontface = "bold",
+            size = 3) +
+  annotate("text", x = 55, y = 45.2, label = "mean", fontface = "bold", size = 3) +
+  annotate("text", x = 7, y = 46, label = "\nmedian", fontface = "bold", size = 3, color = "green4") +
+  scale_x_continuous(limits = c(0,100)) +
+  labs(x = "", y="") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_y_discrete(labels = rev(unique(yar_dai$noise))) +
+  ggtitle("Google Document AI") +
+  theme(text = element_text(face = "bold"),
+        plot.title=element_text(hjust=0.5))
+
+p13 <- ggplot(yar_tess, aes(x = char_error,
+                            y = rev(noise))) +
+  geom_density_ridges(aes(fill = engine), 
+                      scale = 1.5, 
+                      size = 0.2, 
+                      fill = "#FC4E07", 
+                      quantile_lines = TRUE, 
+                      quantiles = 2, 
+                      vline_size = 1.1, 
+                      vline_color = "green") +
+  geom_text(data = yar_tess_summary, 
+             aes(y = noise, 
+                 x = 55,
+                 #x = rev(char_error_mean), 
+                 label = rev(char_error_mean)),
+            nudge_y = 0.5,
+            fontface = "bold",
+            size = 3) +
+  annotate("text", x = 55, y = 45.2, label = "") +
+  annotate("text", x = 5, y = 46, label = "\n") +
+  scale_x_continuous(limits = c(0,100)) +
+  labs(x = "", y="") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_y_discrete(labels = rev(unique(yar_dai$noise))) +
+  theme(axis.text.y=element_blank()) +
+  ggtitle("Tesseract") +
+  theme(text = element_text(face = "bold"),
+        plot.title=element_text(hjust=0.5))
+
+patch <- p12 + plot_spacer() + p13 
+
+patch + plot_annotation(subtitle = "Data: Single-column text in image scans of Arabic Wikipedia pages with noise added articifially (n = 8800; 100 per engine and noise type).\nNoise codes: 'col'=colour, 'bin'=binary, 'blur'=blur, 'weak'=weak ink, 'snp'=salt&pepper, 'wm'=watermark, 'scrib'=scribbles, 'ink'=ink stains.",
+                        caption="Character error (percent)",
+                        theme=theme(plot.subtitle=element_text(size=11),
+                                    plot.caption=element_text(hjust=0.5, 
+                                                              size=12, 
+                                                              margin=margin(t=0))))
+```
+
+# R code for noise generation
+
+```{r echo=TRUE, eval=FALSE}
+### Prerequisites ###########
+#
+# a) Install the following R packages: dplyr, glue, magick, yarr, showtext, shape
+#
+# b) For functions 4-6, set the image dimensions (in pixels) as follows:
+# img_width <- #<An integer>
+# img_height <- #<An integer>
+#   
+# c) For function 5, install the proprietary font "Shopping Script" (https://www.dafont.com/shopping-script.font)
+#
+#############################
+
+
+### Noise-generating functions 
+ 
+# All functions take two inputs:
+# 1) source_ims: a vector of filepaths for the source images
+# 2) dest_folder: a folder path for destination directory
+
+# 1. BLUR
+blur <- function(source_ims, dest_folder) {
+  for (i in source_ims){
+    magick::image_read(i) %>%
+    magick::image_blur(5, 4) %>%
+    magick::image_write(glue::glue("{dest_folder}/{basename(i)}"))
+  }
+}
+
+# 2. WEAK INK
+weaken <- function(source_ims, dest_folder) {
+  for (i in source_ims){
+    magick::image_read(i) %>%
+    magick::image_oilpaint() %>%
+    magick::image_write(glue::glue("{dest_folder}/{basename(i)}"))
+  }
+}
+
+# 3. SALT & PEPPER
+snp <- function(source_ims, dest_folder) {
+  for (i in source_ims){
+    magick::image_read(i) %>%
+    magick::image_noise(noisetype = "poisson") %>%
+    magick::image_write(glue::glue("{dest_folder}/{basename(i)}"))
+  }
+}
+
+# 4. WATERMARK
+watermark <- function(source_ims, dest_folder) {
+  transp_grey <- yarrr::transparent(orig.col = "gray80", 
+                                    trans.val = 0.4, 
+                                    maxColorValue = 255)
+  for (i in source_ims){
+    img <- magick::image_read(i)
+    tiff(glue::glue("{dest_folder}/{basename(i)}"), 
+         width=img_width, 
+         height=img_height, 
+         units="px", 
+         res=300)
+    plot(img)
+    text(1200, 2000, # NB adapt coordinates to image dimensions
+         "Watermark", 
+         cex=20, 
+         srt=50, 
+         col=transp_grey) 
+    dev.off()
+  }
+}
+
+# 5. SCRIBBLES
+scribble <- function(source_ims, dest_folder) {
+  showtext::font_add(family = "Shopping Script", 
+                     regular = "~/.fonts/ShoppingScript-Regular.otf")
+  showtext::showtext_auto()
+  for (i in source_ims){
+    img <- magick::image_read(i)
+    tiff(glue::glue("{dest_folder}/{basename(i)}"), 
+         width=img_width, 
+         height=img_height, 
+         units="px", 
+         res=300)
+    plot(img)
+    # NB adapt coordinates below to image dimensions
+    text(1500, 2000, "fascinating", family = "Shopping Script", cex = 10, srt = 15, col = "gray30") 
+    text(600, 1000, "__", family = "Shopping Script", cex = 12, col = "gray10", srt = 4)
+    text(300, 700, "_ _", family = "Shopping Script", cex = 12, col = "gray20", srt = -4)
+    text(1600, 800, "NB!", family = "Shopping Script", cex = 10, srt = -10, col = "gray30")
+    text(1650, 1400, "V", family = "Shopping Script", cex =8, srt = 10, col = "gray35")
+    text(1700, 500, "V", family = "Shopping Script", cex =12, srt = 30, col = "gray25")
+    text(400, 1500, "mmm", family = "Shopping Script", cex=10)
+    text(1100, 500, "mnnm", family = "Shopping Script", cex=10, col = "gray35")
+    text(1000, 1200, "mmmmmmm", family = "Shopping Script", cex=10, col = "gray25")
+    text(50, 1300, "|", family = "Shopping Script", cex=10)
+    text(100, 1100, "Z", family = "Shopping Script", cex=10, col = "gray25")
+    text(400, 1800, "O", family = "Shopping Script", cex=12, col = "gray35")
+    text(1200, 700, "O", family = "Shopping Script", cex=10, col = "gray25")
+    text(450, 400, "X", family = "Shopping Script", cex=10, col = "gray15")
+    dev.off()
+  }
+}
+
+# 6. INK STAINS
+ink <- function(source_ims, dest_folder) {
+  for (i in source_ims){
+    tiff(file="ink.tiff", 
+         width=img_width, 
+         height=img_height, 
+         units="px", 
+         res=300)
+    par(bg=NA)
+    shape::emptyplot()
+    shape::filledshape(matrix(nc = 4, 
+                              nr = 4, 
+                              runif(8)), 
+                       col = shadepalette(50, "black", "grey20"))
+    dev.off()
+    main <- magick::image_read(i)
+    inset <- magick::image_read("ink.tiff")
+    final <- magick::image_composite(main, inset, operator = "atop")
+    image_write(final, glue::glue("{dest_folder}/{basename(i)}"))
+  }
+}
+```

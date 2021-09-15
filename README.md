@@ -2,7 +2,7 @@
   
 This repository holds replication materials for the manuscript ["OCR with Tesseract, Amazon Textract, and Google Document AI: A Benchmarking Experiment"](https://osf.io/preprints/socarxiv/6zfvs). It contains:
 
-- The .RMD file of the manuscript. It should knit if you clone the repository.
+- The .RMD file of the manuscript. It should knit if you clone the repository and work within `noisy-ocr-benchmark.Rproj`.
 - 51,304 .TXT files with the text output from all the OCR processing requests.
 - .CSV files with data for all the figures.
 
