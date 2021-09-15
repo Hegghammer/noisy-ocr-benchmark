@@ -29,4 +29,4 @@ available “Noisy OCR Dataset” (NOD) for reuse in future benchmarking studies
 Core results: 
 \
 \
-![](images/fig4.pdf)
+![](images/fig4.png)
